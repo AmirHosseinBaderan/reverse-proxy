@@ -88,6 +88,43 @@ This will start the proxy server with:
 - Automatic redirection from HTTP to HTTPS
 - Proxying requests for `test.local` to `http://localhost:5258`
 
+## Docker
+
+The application can be containerized using the provided Dockerfile.
+
+### Building the Docker Image
+
+```bash
+docker build -t reverse-proxy .
+```
+
+### Running the Container
+
+```bash
+docker run -d \
+  -p 80:80 \
+  -p 443:443 \
+  -v ./config:/app/config \
+  -v ./certs:/app/certs \
+  --name reverse-proxy \
+  reverse-proxy
+```
+
+### Environment Variables
+
+You can customize the configuration path using environment variables:
+
+```bash
+docker run -d \
+  -p 80:80 \
+  -p 443:443 \
+  -v ./custom-config:/app/config \
+  -v ./custom-certs:/app/certs \
+  -e CONFIG_PATH="/app/custom-config" \
+  --name reverse-proxy \
+  reverse-proxy
+```
+
 ## Development
 
 ### Testing
