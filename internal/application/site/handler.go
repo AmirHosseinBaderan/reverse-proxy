@@ -9,8 +9,8 @@ import (
 )
 
 type Handler struct {
-	site    *global.SiteConfig
-	handler http.Handler
+	Site    *global.SiteConfig
+	Handler http.Handler
 }
 
 func NewSiteHandler(cfg *global.SiteConfig) *Handler {
@@ -55,7 +55,7 @@ func NewSiteHandler(cfg *global.SiteConfig) *Handler {
 	)
 
 	return &Handler{
-		site:    cfg,
-		handler: handler,
+		Site:    cfg,
+		Handler: handler,
 	}
 }
