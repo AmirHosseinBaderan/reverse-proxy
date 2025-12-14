@@ -24,7 +24,8 @@ type Limits struct {
 }
 
 type TLS struct {
-	Listen   string `yaml:"listen"`
-	CertFile string `yaml:"cert_file"`
-	KeyFile  string `yaml:"key_file"`
+	Listen       string `yaml:"listen"`
+	CertFile     string `yaml:"cert_file"`
+	KeyFile      string `yaml:"key_file"`
+	RedirectHTTP bool   `yaml:"redirect_http"`
 }
