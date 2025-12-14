@@ -8,7 +8,7 @@ type Settings struct {
 
 type Server struct {
 	Listen   string   `yaml:"listen"`
-	TLS      TLS      `yaml:"tls"`
+	TLS      *TLS     `yaml:"tls"`
 	Timeouts Timeouts `yaml:"timeouts"`
 	Limits   Limits   `yaml:"limits"`
 }
