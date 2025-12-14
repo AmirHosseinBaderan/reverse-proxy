@@ -1,0 +1,10 @@
+server:
+  listen: ":80"
+
+  timeouts:
+    read: 10s
+    write: 10s
+    idle: 60s
+
+  limits:
+    max_header_bytes: 1048576

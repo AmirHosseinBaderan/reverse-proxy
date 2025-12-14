@@ -1,0 +1,8 @@
+domain: test.local
+
+proxy:
+  upstream: http://localhost:5258
+
+timeouts:
+  read: 10s
+  write: 10s
