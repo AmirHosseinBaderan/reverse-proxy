@@ -33,6 +33,7 @@ func main() {
 	go func() {
 		tlsServer(settings, router)
 	}()
+	log.Printf("starting app")
 }
 
 func defaultServer(settings *global.Settings, router http.Handler) {

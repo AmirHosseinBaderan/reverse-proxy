@@ -8,3 +8,9 @@ server:
 
   limits:
     max_header_bytes: 1048576
+
+  tls:
+    listen: ":443"
+    cert_file: "./certs/fullchain.pem"
+    key_file: "./certs/privkey.pem"
+    redirect_http: true
