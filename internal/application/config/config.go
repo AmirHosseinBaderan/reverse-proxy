@@ -2,20 +2,21 @@ package config
 
 import (
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
-	"reverse-proxy/internal/models"
+	"reverse-proxy/internal/models/global"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
-func LoadConfigs(dir string) (map[string]*models.SiteConfig, error) {
+func LoadConfigs(dir string) (map[string]*global.SiteConfig, error) {
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
 
-	sites := make(map[string]*models.SiteConfig)
+	sites := make(map[string]*global.SiteConfig)
 
 	for _, f := range files {
 		if f.IsDir() || !strings.HasSuffix(f.Name(), ".yml") {
@@ -27,7 +28,7 @@ func LoadConfigs(dir string) (map[string]*models.SiteConfig, error) {
 			return nil, err
 		}
 
-		var cfg models.SiteConfig
+		var cfg global.SiteConfig
 		if err := yaml.Unmarshal(data, &cfg); err != nil {
 			return nil, err
 		}
