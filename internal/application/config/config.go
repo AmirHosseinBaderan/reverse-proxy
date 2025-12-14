@@ -19,7 +19,7 @@ func LoadConfigs(dir string) (map[string]*global.SiteConfig, error) {
 	sites := make(map[string]*global.SiteConfig)
 
 	for _, f := range files {
-		if f.IsDir() || !strings.HasSuffix(f.Name(), ".yml") {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".yml") || f.Name() == "settings.yml" {
 			continue
 		}
 

@@ -16,7 +16,7 @@ func main() {
 
 	sites, err := config.LoadConfigs("./config")
 	if err != nil {
-		log.Fatalf("Error loading settings: %v", err)
+		log.Fatalf("Error loading sites: %v", err)
 	}
 
 	configs := make(map[string]http.Handler)
