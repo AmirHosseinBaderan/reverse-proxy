@@ -1,3 +1,14 @@
+// Reverse Proxy Application
+//
+// This application provides a high-performance reverse proxy with support for:
+// - Host-based virtual hosting
+// - Path-based routing
+// - Load balancing (round-robin and random algorithms)
+// - TLS termination with HTTP->HTTPS redirect
+// - Per-site timeouts and limits
+// - Custom header manipulation
+//
+// Configuration is YAML-based and supports hot reloading.
 package main
 
 import (

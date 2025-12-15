@@ -1,3 +1,5 @@
+// Package host provides HTTP request routing based on host headers.
+// It implements host-based virtual hosting for the reverse proxy.
 package host
 
 import (

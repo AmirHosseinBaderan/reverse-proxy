@@ -1,3 +1,5 @@
+// Package site provides HTTP handler implementations for reverse proxy sites.
+// It supports single upstream proxies, load-balanced proxies, and path-based routing.
 package site
 
 import (

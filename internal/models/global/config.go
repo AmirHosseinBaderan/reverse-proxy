@@ -1,5 +1,8 @@
+// Package global contains shared data models and configuration structures
+// used throughout the reverse proxy application.
 package global
 
+// SiteConfig represents the configuration for a single proxy site.
 type SiteConfig struct {
 	Domain   string   `yaml:"domain"`
 	Listen   string   `yaml:"listen"`
