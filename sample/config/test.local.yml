@@ -14,9 +14,15 @@ proxy:
 
   paths:
     - path: /api/
-      upstream: http://localhost:5042
+      upstreams:
+        - http://api-server1:3000
+        - http://api-server2:3000
+        - http://api-server3:3000
+      load_balance:
+        algorithm: round-robin
       headers:
         X-API-Key: secret-api-key
+        X-Environment: production
 
 timeouts:
   read: 10s

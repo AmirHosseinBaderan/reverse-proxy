@@ -164,6 +164,70 @@ func NewLoadBalancedProxy(lb *LoadBalancer, logger *slog.Logger, cfg *global.Sit
 	})
 }
 
+func NewLoadBalancedProxyWithHeaders(lb *LoadBalancer, logger *slog.Logger, cfg *global.SiteConfig, pathCfg *global.ProxyPath) http.Handler {
+	transport := &http.Transport{
+		MaxIdleConns:        1000,
+		MaxIdleConnsPerHost: 100,
+		IdleConnTimeout:     90 * time.Second,
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Select ONE upstream server for this request
+		target := lb.Next()
+		
+		// Clone the original request to avoid modifying it
+		outReq := r.Clone(r.Context())
+		outReq.URL.Scheme = target.Scheme
+		outReq.URL.Host = target.Host
+		// Keep the original request path
+		outReq.URL.Path = r.URL.Path
+		if target.RawPath != "" {
+			outReq.URL.RawPath = target.RawPath
+		}
+		if target.RawQuery == "" || r.URL.RawQuery == "" {
+			outReq.URL.RawQuery = target.RawQuery
+		} else {
+			outReq.URL.RawQuery = target.RawQuery + "&" + r.URL.RawQuery
+		}
+		
+		// Add global headers first
+		for k, v := range cfg.Proxy.Headers {
+			outReq.Header.Set(k, v)
+		}
+		
+		// Add path-specific headers
+		for k, v := range pathCfg.Headers {
+			outReq.Header.Set(k, v)
+		}
+		
+		logger.Info("Load balanced request", "method", r.Method, "path", r.URL.Path, "target", target.String(), "path_config", pathCfg.Path)
+		
+		// Make the request to the selected upstream
+		resp, err := transport.RoundTrip(outReq)
+		if err != nil {
+			logger.Error("Upstream error", "domain", cfg.Domain, "url", r.URL.String(), "target", target.String(), "path_config", pathCfg.Path, "error", err)
+			http.Error(w, "Upstream error", http.StatusBadGateway)
+			return
+		}
+		defer resp.Body.Close()
+		
+		logger.Info("Upstream response", "status", resp.StatusCode, "size", resp.ContentLength, "target", target.String(), "path_config", pathCfg.Path)
+		
+		// Copy response headers
+		for key, values := range resp.Header {
+			for _, value := range values {
+				w.Header().Add(key, value)
+			}
+		}
+		
+		// Copy status code and body
+		w.WriteHeader(resp.StatusCode)
+		if _, err := io.Copy(w, resp.Body); err != nil {
+			logger.Error("Failed to copy response body", "error", err)
+		}
+	})
+}
+
 func NewSiteHandler(logger *slog.Logger, cfg *global.SiteConfig) (*Handler, error) {
 	// Check if path-based routing is configured
 	if len(cfg.Proxy.Paths) > 0 {
@@ -175,7 +239,22 @@ func NewSiteHandler(logger *slog.Logger, cfg *global.SiteConfig) (*Handler, erro
 			var pathLb *LoadBalancer
 			
 			// Check if this path has multiple upstreams (load balancing)
-			if len(cfg.Proxy.Upstreams) > 0 {
+			if len(pathCfg.Upstreams) > 0 {
+				// Path has its own upstreams - use path-specific load balancing
+				algorithm := "round-robin"
+				if pathCfg.LoadBalance != nil && pathCfg.LoadBalance.Algorithm != "" {
+					algorithm = pathCfg.LoadBalance.Algorithm
+				}
+				
+				pathLb, err = NewLoadBalancer(pathCfg.Upstreams, algorithm)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create load balancer for path %s: %w", pathCfg.Path, err)
+				}
+				
+				// Create a load-balanced proxy for this path with path-specific headers
+				pathProxy = NewLoadBalancedProxyWithHeaders(pathLb, logger, cfg, pathCfg)
+			} else if len(cfg.Proxy.Upstreams) > 0 {
+				// Use global upstreams for this path
 				algorithm := "round-robin"
 				if cfg.Proxy.LoadBalance != nil && cfg.Proxy.LoadBalance.Algorithm != "" {
 					algorithm = cfg.Proxy.LoadBalance.Algorithm
@@ -185,7 +264,9 @@ func NewSiteHandler(logger *slog.Logger, cfg *global.SiteConfig) (*Handler, erro
 				if err != nil {
 					return nil, fmt.Errorf("failed to create load balancer for path %s: %w", pathCfg.Path, err)
 				}
-				pathProxy = NewLoadBalancedProxy(pathLb, logger, cfg)
+				
+				// Create a load-balanced proxy for this path with path-specific headers
+				pathProxy = NewLoadBalancedProxyWithHeaders(pathLb, logger, cfg, pathCfg)
 			} else {
 				// Single upstream for this path
 				target, err := url.Parse(pathCfg.Upstream)

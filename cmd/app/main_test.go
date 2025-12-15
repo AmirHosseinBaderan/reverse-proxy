@@ -92,21 +92,22 @@ timeouts:
 		// Create site config with paths
 		siteConfig := `domain: test-paths.local
 proxy:
-		paths:
-		  - path: /api/
-		    upstream: http://localhost:5042
-		    headers:
-		      X-API-Key: secret-api-key
-		  - path: /static/
-		    upstream: http://localhost:5043
-		      X-Static-Token: static-token
-		  - path: /
-		    upstream: http://localhost:5044
-		    headers:
-		      X-Default-Key: default-key
+	 paths:
+	   - path: /api/
+	     upstream: http://localhost:5042
+	     headers:
+	       X-API-Key: secret-api-key
+	   - path: /static/
+	     upstream: http://localhost:5043
+	     headers:
+	       X-Static-Token: static-token
+	   - path: /
+	     upstream: http://localhost:5044
+	     headers:
+	       X-Default-Key: default-key
 timeouts:
-		read: 10s
-		write: 10s`
+	 read: 10s
+	 write: 10s`
 
 		siteConfigFile := filepath.Join(tmpDir, "test-paths.local.yml")
 		if err := os.WriteFile(siteConfigFile, []byte(siteConfig), 0644); err != nil {
@@ -176,6 +177,98 @@ timeouts:
 		}
 		if !foundRoot {
 			t.Error("Expected to find / path")
+		}
+	})
+
+	t.Run("test proxy path load balancing configuration", func(t *testing.T) {
+		// Create temporary config directory
+		tmpDir := t.TempDir()
+
+		// Create site config with load-balanced paths
+		siteConfig := `domain: test-paths-lb.local
+proxy:
+	 paths:
+	   - path: /api/
+	     upstreams:
+	       - http://api-server1:3000
+	       - http://api-server2:3000
+	       - http://api-server3:3000
+	     load_balance:
+	       algorithm: round-robin
+	     headers:
+	       X-API-Key: secret-api-key
+	   - path: /static/
+	     upstreams:
+	       - http://static1:8080
+	       - http://static2:8080
+	     load_balance:
+	       algorithm: random
+	     headers:
+	       X-Static-Token: static-token
+	   - path: /
+	     upstream: http://frontend:3000
+timeouts:
+	 read: 10s
+	 write: 10s`
+
+		siteConfigFile := filepath.Join(tmpDir, "test-paths-lb.local.yml")
+		if err := os.WriteFile(siteConfigFile, []byte(siteConfig), 0644); err != nil {
+			t.Fatalf("Failed to create site config file: %v", err)
+		}
+
+		// Test loading site configs with load-balanced paths
+		sites, err := config.LoadConfigs(tmpDir)
+		if err != nil {
+			t.Fatalf("Failed to load site configs: %v", err)
+		}
+
+		testSite, ok := sites["test-paths-lb.local"]
+		if !ok {
+			t.Error("Expected test-paths-lb.local site")
+		}
+
+		// Check that paths are loaded correctly
+		if len(testSite.Proxy.Paths) != 3 {
+			t.Errorf("Expected 3 paths, got %d", len(testSite.Proxy.Paths))
+		}
+
+		// Check API path with load balancing
+		apiPath := findPathByPrefix(testSite.Proxy.Paths, "/api/")
+		if apiPath == nil {
+			t.Error("Expected to find /api/ path")
+		} else {
+			if len(apiPath.Upstreams) != 3 {
+				t.Errorf("Expected 3 API upstreams, got %d", len(apiPath.Upstreams))
+			}
+			if apiPath.LoadBalance == nil || apiPath.LoadBalance.Algorithm != "round-robin" {
+				t.Errorf("Expected round-robin load balancing for API path")
+			}
+		}
+
+		// Check static path with load balancing
+		staticPath := findPathByPrefix(testSite.Proxy.Paths, "/static/")
+		if staticPath == nil {
+			t.Error("Expected to find /static/ path")
+		} else {
+			if len(staticPath.Upstreams) != 2 {
+				t.Errorf("Expected 2 static upstreams, got %d", len(staticPath.Upstreams))
+			}
+			if staticPath.LoadBalance == nil || staticPath.LoadBalance.Algorithm != "random" {
+				t.Errorf("Expected random load balancing for static path")
+			}
+		}
+
+		// Check root path without load balancing
+		rootPath := findPathByPrefix(testSite.Proxy.Paths, "/")
+		if rootPath == nil {
+			t.Error("Expected to find / path")
+		} else {
+			if len(rootPath.Upstreams) != 0 {
+				t.Errorf("Expected 0 root upstreams, got %d", len(rootPath.Upstreams))
+			}
+			if rootPath.Upstream != "http://frontend:3000" {
+				t.Errorf("Expected frontend upstream, got %s", rootPath.Upstream)
+			}
 		}
 	})
 
@@ -376,6 +469,16 @@ func createTestHandler(logger *slog.Logger, cfg *global.SiteConfig) (http.Handle
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("Response from " + cfg.Domain))
 	}), nil
+}
+
+// Helper function to find a path by its prefix
+func findPathByPrefix(paths []global.ProxyPath, prefix string) *global.ProxyPath {
+	for _, path := range paths {
+		if path.Path == prefix {
+			return &path
+		}
+	}
+	return nil
 }
 
 // Helper function to create a test handler for path-based routing
