@@ -92,22 +92,21 @@ timeouts:
 		// Create site config with paths
 		siteConfig := `domain: test-paths.local
 proxy:
-	 paths:
-	   - path: /api/
-	     upstream: http://localhost:5042
-	     headers:
-	       X-API-Key: secret-api-key
-	   - path: /static/
-	     upstream: http://localhost:5043
-	     headers:
-	       X-Static-Token: static-token
-	   - path: /
-	     upstream: http://localhost:5044
-	     headers:
-	       X-Default-Key: default-key
+		  - path: /api/
+		    upstream: http://localhost:5042
+		    headers:
+		      X-API-Key: secret-api-key
+		  - path: /static/
+		    upstream: http://localhost:5043
+		    headers:
+		      X-Static-Token: static-token
+		  - path: /
+		    upstream: http://localhost:5044
+		    headers:
+		      X-Default-Key: default-key
 timeouts:
-	 read: 10s
-	 write: 10s`
+		read: 10s
+		write: 10s`
 
 		siteConfigFile := filepath.Join(tmpDir, "test-paths.local.yml")
 		if err := os.WriteFile(siteConfigFile, []byte(siteConfig), 0644); err != nil {
@@ -187,29 +186,29 @@ timeouts:
 		// Create site config with load-balanced paths
 		siteConfig := `domain: test-paths-lb.local
 proxy:
-	 paths:
-	   - path: /api/
-	     upstreams:
-	       - http://api-server1:3000
-	       - http://api-server2:3000
-	       - http://api-server3:3000
-	     load_balance:
-	       algorithm: round-robin
-	     headers:
-	       X-API-Key: secret-api-key
-	   - path: /static/
-	     upstreams:
-	       - http://static1:8080
-	       - http://static2:8080
-	     load_balance:
-	       algorithm: random
-	     headers:
-	       X-Static-Token: static-token
-	   - path: /
-	     upstream: http://frontend:3000
+		paths:
+		  - path: /api/
+		    upstreams:
+		      - http://api-server1:3000
+		      - http://api-server2:3000
+		      - http://api-server3:3000
+		    load_balance:
+		      algorithm: round-robin
+		    headers:
+		      X-API-Key: secret-api-key
+		  - path: /static/
+		    upstreams:
+		      - http://static1:8080
+		      - http://static2:8080
+		    load_balance:
+		      algorithm: random
+		    headers:
+		      X-Static-Token: static-token
+		  - path: /
+		    upstream: http://frontend:3000
 timeouts:
-	 read: 10s
-	 write: 10s`
+		read: 10s
+		write: 10s`
 
 		siteConfigFile := filepath.Join(tmpDir, "test-paths-lb.local.yml")
 		if err := os.WriteFile(siteConfigFile, []byte(siteConfig), 0644); err != nil {
@@ -473,9 +472,9 @@ func createTestHandler(logger *slog.Logger, cfg *global.SiteConfig) (http.Handle
 
 // Helper function to find a path by its prefix
 func findPathByPrefix(paths []global.ProxyPath, prefix string) *global.ProxyPath {
-	for _, path := range paths {
+	for i, path := range paths {
 		if path.Path == prefix {
-			return &path
+			return &paths[i]
 		}
 	}
 	return nil

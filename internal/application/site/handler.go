@@ -115,7 +115,7 @@ func NewLoadBalancedProxy(lb *LoadBalancer, logger *slog.Logger, cfg *global.Sit
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Select ONE upstream server for this request
 		target := lb.Next()
-		
+
 		// Clone the original request to avoid modifying it
 		outReq := r.Clone(r.Context())
 		outReq.URL.Scheme = target.Scheme
@@ -130,14 +130,14 @@ func NewLoadBalancedProxy(lb *LoadBalancer, logger *slog.Logger, cfg *global.Sit
 		} else {
 			outReq.URL.RawQuery = target.RawQuery + "&" + r.URL.RawQuery
 		}
-		
+
 		// Add custom headers
 		for k, v := range cfg.Proxy.Headers {
 			outReq.Header.Set(k, v)
 		}
-		
+
 		logger.Info("Load balanced request", "method", r.Method, "path", r.URL.Path, "target", target.String())
-		
+
 		// Make the request to the selected upstream
 		resp, err := transport.RoundTrip(outReq)
 		if err != nil {
@@ -145,17 +145,19 @@ func NewLoadBalancedProxy(lb *LoadBalancer, logger *slog.Logger, cfg *global.Sit
 			http.Error(w, "Upstream error", http.StatusBadGateway)
 			return
 		}
-		defer resp.Body.Close()
-		
+		defer func(Body io.ReadCloser) {
+			_ = Body.Close()
+		}(resp.Body)
+
 		logger.Info("Upstream response", "status", resp.StatusCode, "size", resp.ContentLength, "target", target.String())
-		
+
 		// Copy response headers
 		for key, values := range resp.Header {
 			for _, value := range values {
 				w.Header().Add(key, value)
 			}
 		}
-		
+
 		// Copy status code and body
 		w.WriteHeader(resp.StatusCode)
 		if _, err := io.Copy(w, resp.Body); err != nil {
@@ -174,7 +176,7 @@ func NewLoadBalancedProxyWithHeaders(lb *LoadBalancer, logger *slog.Logger, cfg 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Select ONE upstream server for this request
 		target := lb.Next()
-		
+
 		// Clone the original request to avoid modifying it
 		outReq := r.Clone(r.Context())
 		outReq.URL.Scheme = target.Scheme
@@ -189,19 +191,19 @@ func NewLoadBalancedProxyWithHeaders(lb *LoadBalancer, logger *slog.Logger, cfg 
 		} else {
 			outReq.URL.RawQuery = target.RawQuery + "&" + r.URL.RawQuery
 		}
-		
+
 		// Add global headers first
 		for k, v := range cfg.Proxy.Headers {
 			outReq.Header.Set(k, v)
 		}
-		
+
 		// Add path-specific headers
 		for k, v := range pathCfg.Headers {
 			outReq.Header.Set(k, v)
 		}
-		
+
 		logger.Info("Load balanced request", "method", r.Method, "path", r.URL.Path, "target", target.String(), "path_config", pathCfg.Path)
-		
+
 		// Make the request to the selected upstream
 		resp, err := transport.RoundTrip(outReq)
 		if err != nil {
@@ -209,17 +211,19 @@ func NewLoadBalancedProxyWithHeaders(lb *LoadBalancer, logger *slog.Logger, cfg 
 			http.Error(w, "Upstream error", http.StatusBadGateway)
 			return
 		}
-		defer resp.Body.Close()
-		
+		defer func(Body io.ReadCloser) {
+			_ = Body.Close()
+		}(resp.Body)
+
 		logger.Info("Upstream response", "status", resp.StatusCode, "size", resp.ContentLength, "target", target.String(), "path_config", pathCfg.Path)
-		
+
 		// Copy response headers
 		for key, values := range resp.Header {
 			for _, value := range values {
 				w.Header().Add(key, value)
 			}
 		}
-		
+
 		// Copy status code and body
 		w.WriteHeader(resp.StatusCode)
 		if _, err := io.Copy(w, resp.Body); err != nil {
@@ -232,12 +236,13 @@ func NewSiteHandler(logger *slog.Logger, cfg *global.SiteConfig) (*Handler, erro
 	// Check if path-based routing is configured
 	if len(cfg.Proxy.Paths) > 0 {
 		mux := http.NewServeMux()
-		
+		var err error
+
 		// Create a proxy for each path
-		for _, pathCfg := range cfg.Proxy.Paths {
+		for i, pathCfg := range cfg.Proxy.Paths {
 			var pathProxy http.Handler
 			var pathLb *LoadBalancer
-			
+
 			// Check if this path has multiple upstreams (load balancing)
 			if len(pathCfg.Upstreams) > 0 {
 				// Path has its own upstreams - use path-specific load balancing
@@ -245,47 +250,47 @@ func NewSiteHandler(logger *slog.Logger, cfg *global.SiteConfig) (*Handler, erro
 				if pathCfg.LoadBalance != nil && pathCfg.LoadBalance.Algorithm != "" {
 					algorithm = pathCfg.LoadBalance.Algorithm
 				}
-				
+
 				pathLb, err = NewLoadBalancer(pathCfg.Upstreams, algorithm)
 				if err != nil {
 					return nil, fmt.Errorf("failed to create load balancer for path %s: %w", pathCfg.Path, err)
 				}
-				
+
 				// Create a load-balanced proxy for this path with path-specific headers
-				pathProxy = NewLoadBalancedProxyWithHeaders(pathLb, logger, cfg, pathCfg)
+				pathProxy = NewLoadBalancedProxyWithHeaders(pathLb, logger, cfg, &cfg.Proxy.Paths[i])
 			} else if len(cfg.Proxy.Upstreams) > 0 {
 				// Use global upstreams for this path
 				algorithm := "round-robin"
 				if cfg.Proxy.LoadBalance != nil && cfg.Proxy.LoadBalance.Algorithm != "" {
 					algorithm = cfg.Proxy.LoadBalance.Algorithm
 				}
-				
+
 				pathLb, err = NewLoadBalancer(cfg.Proxy.Upstreams, algorithm)
 				if err != nil {
 					return nil, fmt.Errorf("failed to create load balancer for path %s: %w", pathCfg.Path, err)
 				}
-				
+
 				// Create a load-balanced proxy for this path with path-specific headers
-				pathProxy = NewLoadBalancedProxyWithHeaders(pathLb, logger, cfg, pathCfg)
+				pathProxy = NewLoadBalancedProxyWithHeaders(pathLb, logger, cfg, &cfg.Proxy.Paths[i])
 			} else {
 				// Single upstream for this path
 				target, err := url.Parse(pathCfg.Upstream)
 				if err != nil {
 					return nil, fmt.Errorf("invalid upstream for path %s: %w", pathCfg.Path, err)
 				}
-				
+
 				transport := &http.Transport{
 					MaxIdleConns:        1000,
 					MaxIdleConnsPerHost: 100,
 					IdleConnTimeout:     90 * time.Second,
 				}
-				
+
 				proxy := httputil.NewSingleHostReverseProxy(target)
-				proxy.(*httputil.ReverseProxy).Transport = transport
-				
+				proxy.Transport = transport
+
 				// Handle headers for single upstream
-				originalDirector := proxy.(*httputil.ReverseProxy).Director
-				proxy.(*httputil.ReverseProxy).Director = func(req *http.Request) {
+				originalDirector := proxy.Director
+				proxy.Director = func(req *http.Request) {
 					originalDirector(req)
 					// Apply global headers first
 					for k, v := range cfg.Proxy.Headers {
@@ -296,25 +301,25 @@ func NewSiteHandler(logger *slog.Logger, cfg *global.SiteConfig) (*Handler, erro
 						req.Header.Set(k, v)
 					}
 				}
-				
+
 				pathProxy = proxy
 			}
-			
+
 			// Apply per-site timeouts
 			timeoutHandler := http.TimeoutHandler(
 				pathProxy,
 				Max(cfg.Timeouts.Read, cfg.Timeouts.Write),
 				"Request timeout",
 			)
-			
+
 			// Register the path with the router
 			mux.Handle(pathCfg.Path, timeoutHandler)
 			logger.Info("Registered path", "path", pathCfg.Path, "upstream", pathCfg.Upstream)
 		}
-		
+
 		// Add request/response logging
 		loggedHandler := loggingHandler(logger, mux)
-		
+
 		return &Handler{
 			Site:    cfg,
 			Handler: loggedHandler,
@@ -322,11 +327,12 @@ func NewSiteHandler(logger *slog.Logger, cfg *global.SiteConfig) (*Handler, erro
 			lb:      nil, // No global load balancer when using paths
 		}, nil
 	}
-	
+
 	// Fallback to original behavior (single upstream or load balancing)
 	var proxy http.Handler
 	var lb *LoadBalancer
-	
+	var err error
+
 	// Check if load balancing is configured
 	if len(cfg.Proxy.Upstreams) > 0 {
 		// Use load balancing
@@ -354,22 +360,21 @@ func NewSiteHandler(logger *slog.Logger, cfg *global.SiteConfig) (*Handler, erro
 			IdleConnTimeout:     90 * time.Second,
 		}
 
-		proxy = httputil.NewSingleHostReverseProxy(target)
-		proxy.(*httputil.ReverseProxy).Transport = transport
-	} else {
-		return nil, fmt.Errorf("no upstream or upstreams configured for %s", cfg.Domain)
-	}
+		reverseProxy := httputil.NewSingleHostReverseProxy(target)
+		reverseProxy.Transport = transport
 
-	// Handle headers for single upstream proxy (load balanced already handles headers)
-	if lb == nil {
-		// For single upstream proxy
-		originalDirector := proxy.(*httputil.ReverseProxy).Director
-		proxy.(*httputil.ReverseProxy).Director = func(req *http.Request) {
+		// Handle headers for single upstream
+		originalDirector := reverseProxy.Director
+		reverseProxy.Director = func(req *http.Request) {
 			originalDirector(req)
 			for k, v := range cfg.Proxy.Headers {
 				req.Header.Set(k, v)
 			}
 		}
+
+		proxy = reverseProxy
+	} else {
+		return nil, fmt.Errorf("no upstream or upstreams configured for %s", cfg.Domain)
 	}
 
 	// Apply per-site timeouts
