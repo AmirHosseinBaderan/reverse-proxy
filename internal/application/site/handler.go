@@ -165,10 +165,87 @@ func NewLoadBalancedProxy(lb *LoadBalancer, logger *slog.Logger, cfg *global.Sit
 }
 
 func NewSiteHandler(logger *slog.Logger, cfg *global.SiteConfig) (*Handler, error) {
+	// Check if path-based routing is configured
+	if len(cfg.Proxy.Paths) > 0 {
+		mux := http.NewServeMux()
+		
+		// Create a proxy for each path
+		for _, pathCfg := range cfg.Proxy.Paths {
+			var pathProxy http.Handler
+			var pathLb *LoadBalancer
+			
+			// Check if this path has multiple upstreams (load balancing)
+			if len(cfg.Proxy.Upstreams) > 0 {
+				algorithm := "round-robin"
+				if cfg.Proxy.LoadBalance != nil && cfg.Proxy.LoadBalance.Algorithm != "" {
+					algorithm = cfg.Proxy.LoadBalance.Algorithm
+				}
+				
+				pathLb, err = NewLoadBalancer(cfg.Proxy.Upstreams, algorithm)
+				if err != nil {
+					return nil, fmt.Errorf("failed to create load balancer for path %s: %w", pathCfg.Path, err)
+				}
+				pathProxy = NewLoadBalancedProxy(pathLb, logger, cfg)
+			} else {
+				// Single upstream for this path
+				target, err := url.Parse(pathCfg.Upstream)
+				if err != nil {
+					return nil, fmt.Errorf("invalid upstream for path %s: %w", pathCfg.Path, err)
+				}
+				
+				transport := &http.Transport{
+					MaxIdleConns:        1000,
+					MaxIdleConnsPerHost: 100,
+					IdleConnTimeout:     90 * time.Second,
+				}
+				
+				proxy := httputil.NewSingleHostReverseProxy(target)
+				proxy.(*httputil.ReverseProxy).Transport = transport
+				
+				// Handle headers for single upstream
+				originalDirector := proxy.(*httputil.ReverseProxy).Director
+				proxy.(*httputil.ReverseProxy).Director = func(req *http.Request) {
+					originalDirector(req)
+					// Apply global headers first
+					for k, v := range cfg.Proxy.Headers {
+						req.Header.Set(k, v)
+					}
+					// Apply path-specific headers
+					for k, v := range pathCfg.Headers {
+						req.Header.Set(k, v)
+					}
+				}
+				
+				pathProxy = proxy
+			}
+			
+			// Apply per-site timeouts
+			timeoutHandler := http.TimeoutHandler(
+				pathProxy,
+				Max(cfg.Timeouts.Read, cfg.Timeouts.Write),
+				"Request timeout",
+			)
+			
+			// Register the path with the router
+			mux.Handle(pathCfg.Path, timeoutHandler)
+			logger.Info("Registered path", "path", pathCfg.Path, "upstream", pathCfg.Upstream)
+		}
+		
+		// Add request/response logging
+		loggedHandler := loggingHandler(logger, mux)
+		
+		return &Handler{
+			Site:    cfg,
+			Handler: loggedHandler,
+			Logger:  logger,
+			lb:      nil, // No global load balancer when using paths
+		}, nil
+	}
+	
+	// Fallback to original behavior (single upstream or load balancing)
 	var proxy http.Handler
 	var lb *LoadBalancer
-	var err error
-
+	
 	// Check if load balancing is configured
 	if len(cfg.Proxy.Upstreams) > 0 {
 		// Use load balancing

@@ -12,6 +12,13 @@ type Proxy struct {
 	Upstreams       []string               `yaml:"upstreams"`
 	LoadBalance     *LoadBalance           `yaml:"load_balance"`
 	Headers         map[string]string      `yaml:"headers"`
+	Paths           []ProxyPath            `yaml:"paths"`
+}
+
+type ProxyPath struct {
+	Path     string            `yaml:"path"`
+	Upstream string            `yaml:"upstream"`
+	Headers  map[string]string `yaml:"headers"`
 }
 
 type LoadBalance struct {

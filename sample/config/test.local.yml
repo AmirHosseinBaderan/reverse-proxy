@@ -12,6 +12,12 @@ proxy:
     X-Forwarded-For: $remote_addr
     X-Forwarded-Proto: $scheme
 
+  paths:
+    - path: /api/
+      upstream: http://localhost:5042
+      headers:
+        X-API-Key: secret-api-key
+
 timeouts:
   read: 10s
   write: 10s
