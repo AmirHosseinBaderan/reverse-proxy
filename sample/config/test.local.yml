@@ -1,7 +1,16 @@
 domain: test.local
 
 proxy:
-  upstream: http://localhost:5258
+  upstreams:
+    - http://localhost:5042
+    - http://localhost:5043
+
+  load_balance:
+    algorithm: random
+
+  headers:
+    X-Forwarded-For: $remote_addr
+    X-Forwarded-Proto: $scheme
 
 timeouts:
   read: 10s

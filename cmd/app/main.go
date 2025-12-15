@@ -37,7 +37,7 @@ func main() {
 		configs[domain] = handler.Handler
 	}
 
-	router := host.HostRouter(configs)
+	router := host.Router(configs)
 
 	wg := &sync.WaitGroup{}
 	wg.Add(1)

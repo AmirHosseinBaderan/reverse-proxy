@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-func HostRouter(sites map[string]http.Handler) http.Handler {
+func Router(sites map[string]http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host := strings.Split(r.Host, ":")[0] // remove port
 

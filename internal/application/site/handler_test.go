@@ -89,6 +89,161 @@ func TestNewSiteHandler(t *testing.T) {
 	})
 }
 
+func TestLoadBalancer(t *testing.T) {
+	t.Run("round-robin algorithm", func(t *testing.T) {
+		lb, err := NewLoadBalancer([]string{
+			"http://localhost:3000",
+			"http://localhost:3001",
+			"http://localhost:3002",
+		}, "round-robin")
+		if err != nil {
+			t.Fatalf("NewLoadBalancer failed: %v", err)
+		}
+
+		if lb == nil {
+			t.Error("Expected non-nil load balancer")
+		}
+
+		if len(lb.upstreams) != 3 {
+			t.Errorf("Expected 3 upstreams, got %d", len(lb.upstreams))
+		}
+
+		// Test that Next() returns different URLs in round-robin fashion
+		urls := make(map[string]int)
+		for i := 0; i < 6; i++ {
+			url := lb.Next()
+			urls[url.String()]++
+		}
+
+		// Should have distributed requests evenly
+		if len(urls) != 3 {
+			t.Errorf("Expected 3 unique URLs, got %d", len(urls))
+		}
+
+		for _, count := range urls {
+			if count != 2 {
+				t.Errorf("Expected each URL to be used 2 times, got %d", count)
+			}
+		}
+	})
+
+	t.Run("random algorithm", func(t *testing.T) {
+		lb, err := NewLoadBalancer([]string{
+			"http://localhost:3000",
+			"http://localhost:3001",
+		}, "random")
+		if err != nil {
+			t.Fatalf("NewLoadBalancer failed: %v", err)
+		}
+
+		if lb == nil {
+			t.Error("Expected non-nil load balancer")
+		}
+
+		// Just verify it can return URLs without error
+		url1 := lb.Next()
+		url2 := lb.Next()
+
+		if url1 == nil || url2 == nil {
+			t.Error("Expected non-nil URLs from Next()")
+		}
+	})
+
+	t.Run("invalid upstream URL", func(t *testing.T) {
+		_, err := NewLoadBalancer([]string{"://invalid-url"}, "round-robin")
+		if err == nil {
+			t.Error("Expected error for invalid upstream URL, got nil")
+		}
+	})
+
+	t.Run("no upstreams", func(t *testing.T) {
+		_, err := NewLoadBalancer([]string{}, "round-robin")
+		if err == nil {
+			t.Error("Expected error for no upstreams, got nil")
+		}
+	})
+}
+
+func TestNewSiteHandlerWithLoadBalancing(t *testing.T) {
+	t.Run("load balanced configuration", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+		
+		cfg := &global.SiteConfig{
+			Domain: "example.com",
+			Proxy: global.Proxy{
+				Upstreams: []string{
+					"http://localhost:3000",
+					"http://localhost:3001",
+				},
+				LoadBalance: &global.LoadBalance{
+					Algorithm: "round-robin",
+				},
+				Headers: map[string]string{
+					"X-Forwarded-For": "$remote_addr",
+				},
+			},
+			Timeouts: global.Timeouts{
+				Read:  10 * time.Second,
+				Write: 10 * time.Second,
+			},
+		}
+
+		handler, err := NewSiteHandler(logger, cfg)
+		if err != nil {
+			t.Fatalf("NewSiteHandler with load balancing failed: %v", err)
+		}
+
+		if handler == nil {
+			t.Error("Expected non-nil handler")
+		}
+
+		if handler.lb == nil {
+			t.Error("Expected non-nil load balancer")
+		}
+
+		if handler.Site != cfg {
+			t.Error("Expected handler Site to match config")
+		}
+
+		if handler.Logger != logger {
+			t.Error("Expected handler Logger to match input logger")
+		}
+
+		if handler.Handler == nil {
+			t.Error("Expected handler Handler to be non-nil")
+		}
+	})
+
+	t.Run("backward compatibility with single upstream", func(t *testing.T) {
+		logger := slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))
+		
+		cfg := &global.SiteConfig{
+			Domain: "example.com",
+			Proxy: global.Proxy{
+				Upstream: "http://localhost:3000",
+			},
+			Timeouts: global.Timeouts{
+				Read:  10 * time.Second,
+				Write: 10 * time.Second,
+			},
+		}
+
+		handler, err := NewSiteHandler(logger, cfg)
+		if err != nil {
+			t.Fatalf("NewSiteHandler with single upstream failed: %v", err)
+		}
+
+		if handler == nil {
+			t.Error("Expected non-nil handler")
+		}
+
+		// Should not have a load balancer for single upstream
+		if handler.lb != nil {
+			t.Error("Expected nil load balancer for single upstream")
+		}
+	})
+}
+
 func TestSiteHandlerServeHTTP(t *testing.T) {
 	t.Run("successful proxy request", func(t *testing.T) {
 		// Create a test upstream server

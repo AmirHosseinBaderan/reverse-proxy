@@ -24,7 +24,7 @@ func TestHostRouter(t *testing.T) {
 			"test.local":  testHandler,
 		}
 
-		router := HostRouter(sites)
+		router := Router(sites)
 
 		// Test request to example.com
 		req := httptest.NewRequest("GET", "http://example.com/path", nil)
@@ -72,7 +72,7 @@ func TestHostRouter(t *testing.T) {
 			}),
 		}
 
-		router := HostRouter(sites)
+		router := Router(sites)
 
 		// Test request to unknown host
 		req := httptest.NewRequest("GET", "http://unknown.com/path", nil)
@@ -99,7 +99,7 @@ func TestHostRouter(t *testing.T) {
 			"example.com": exampleHandler,
 		}
 
-		router := HostRouter(sites)
+		router := Router(sites)
 
 		// Test request with port number
 		req := httptest.NewRequest("GET", "http://example.com:8080/path", nil)
@@ -123,7 +123,7 @@ func TestHostRouter(t *testing.T) {
 
 	t.Run("empty sites map", func(t *testing.T) {
 		sites := map[string]http.Handler{}
-		router := HostRouter(sites)
+		router := Router(sites)
 
 		req := httptest.NewRequest("GET", "http://example.com/path", nil)
 		req.Host = "example.com"
